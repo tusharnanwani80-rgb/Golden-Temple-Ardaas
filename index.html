@@ -44,8 +44,8 @@
             
             // Audio Player State
             const [isPlaying, setIsPlaying] = useState(false);
+            const [isAudioLoading, setIsAudioLoading] = useState(false);
             const audioRef = useRef(null);
-            const audioStreamUrl = "https://stream.zeno.fm/f3qf42zz81zuv"; // Highly reliable SGPC Live Audio Stream
 
             const performFetch = async () => {
                 try {
@@ -93,23 +93,47 @@
                 performFetch();
             };
 
-            // Audio Play/Pause Logic
+            // GODMODE AUDIO ENGINE: Dual Redundancy and Clean URLs
             const toggleAudio = () => {
-                if (audioRef.current) {
-                    if (isPlaying) {
-                        audioRef.current.pause();
-                        setIsPlaying(false);
-                    } else {
-                        // Forcing a fresh reload of the stream to ensure it's live
-                        audioRef.current.src = `${audioStreamUrl}?cb=${new Date().getTime()}`;
-                        audioRef.current.play().then(() => {
+                const audio = audioRef.current;
+                if (!audio) return;
+
+                if (isPlaying) {
+                    audio.pause();
+                    setIsPlaying(false);
+                    setIsAudioLoading(false);
+                } else {
+                    setIsAudioLoading(true);
+                    
+                    // Primary Stream (No Cache Busters allowed here!)
+                    audio.src = "https://stream.zeno.fm/f3qf42zz81zuv";
+                    audio.load(); // Tell browser to connect
+                    
+                    audio.play().then(() => {
+                        setIsPlaying(true);
+                        setIsAudioLoading(false);
+                    }).catch(e => {
+                        console.warn("Primary stream blocked, trying official SGPC backup...", e);
+                        
+                        // Backup Stream (The ';' at the end is a Shoutcast trick to force browser streaming)
+                        audio.src = "https://live.sgpc.net:8443/;";
+                        audio.load();
+                        
+                        audio.play().then(() => {
                             setIsPlaying(true);
-                        }).catch(e => {
-                            console.error("Audio playback failed:", e);
-                            alert("Could not start the live audio stream. Please try again.");
+                            setIsAudioLoading(false);
+                        }).catch(err => {
+                            console.error("Backup stream failed:", err);
+                            setIsAudioLoading(false);
+                            alert("Live audio servers are currently offline. Please use the YouTube App button instead.");
                         });
-                    }
+                    });
                 }
+            };
+
+            // Raw Channel ID URL to bypass the Android Intent bug
+            const openYouTubeApp = () => {
+                window.open("https://www.youtube.com/channel/UCRp_L835_0w2rP_tA6-oZPA/live", "_blank");
             };
 
             return (
@@ -180,21 +204,27 @@
                             </div>
                         </div>
 
-                        {/* Updated Action Buttons: Native Audio & YouTube Link */}
+                        {/* Action Buttons: Native Audio & Fixed YouTube Link */}
                         <div className="grid grid-cols-2 gap-4">
-                            <button onClick={toggleAudio} className={`bg-white hover:bg-slate-50 border ${isPlaying ? 'border-amber-400 shadow-amber-200' : 'border-slate-200'} shadow-sm rounded-2xl p-4 flex flex-col items-center justify-center gap-3 transition-all group cursor-pointer relative overflow-hidden`}>
+                            <button onClick={toggleAudio} disabled={isAudioLoading} className={`bg-white hover:bg-slate-50 border ${isPlaying ? 'border-amber-400 shadow-amber-200' : 'border-slate-200'} shadow-sm rounded-2xl p-4 flex flex-col items-center justify-center gap-3 transition-all group cursor-pointer relative overflow-hidden ${isAudioLoading ? 'opacity-70 cursor-not-allowed' : ''}`}>
                                 {isPlaying && (
                                     <div className="absolute inset-0 bg-amber-50 opacity-50 animate-pulse"></div>
                                 )}
                                 <div className={`${isPlaying ? 'bg-amber-100' : 'bg-amber-50'} p-3 rounded-full transition-colors relative z-10`}>
-                                    {isPlaying ? <IconPause className="w-6 h-6 text-amber-600" /> : <IconPlay className="w-6 h-6 text-amber-600" />}
+                                    {isAudioLoading ? (
+                                        <div className="w-6 h-6 border-2 border-amber-200 border-t-amber-600 rounded-full animate-spin"></div>
+                                    ) : isPlaying ? (
+                                        <IconPause className="w-6 h-6 text-amber-600" />
+                                    ) : (
+                                        <IconPlay className="w-6 h-6 text-amber-600" />
+                                    )}
                                 </div>
                                 <span className="text-xs font-bold text-slate-700 text-center relative z-10">
-                                    {isPlaying ? "Pause Live Audio" : "Play Live Audio"}
+                                    {isAudioLoading ? "Connecting..." : isPlaying ? "Pause Live Audio" : "Play Live Audio"}
                                 </span>
                             </button>
                             
-                            <button onClick={() => window.open("https://www.youtube.com/@sgpcnet/live", "_blank")} className="bg-white hover:bg-slate-50 border border-slate-200 shadow-sm rounded-2xl p-4 flex flex-col items-center justify-center gap-3 transition-all group cursor-pointer">
+                            <button onClick={openYouTubeApp} className="bg-white hover:bg-slate-50 border border-slate-200 shadow-sm rounded-2xl p-4 flex flex-col items-center justify-center gap-3 transition-all group cursor-pointer">
                                 <div className="bg-red-50 p-3 rounded-full group-hover:bg-red-100 transition-colors">
                                     <IconYoutube className="w-6 h-6 text-red-600" />
                                 </div>
