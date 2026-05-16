@@ -40,47 +40,52 @@
             const [isLoading, setIsLoading] = useState(true);
             const [ardaasData, setArdaasData] = useState({ time: '--:--', daysActive: 0 });
             const [isRefreshing, setIsRefreshing] = useState(false);
+            const [errorMsg, setErrorMsg] = useState(null);
 
-            useEffect(() => {
-                const fetchRealData = async () => {
-                    // Fallback to demo data if the user hasn't added their Google URL yet
-                    if (!GOOGLE_API_URL || GOOGLE_API_URL === "YOUR_GOOGLE_SCRIPT_URL_HERE") {
-                        setTimeout(() => {
-                            setArdaasData({ time: '5.30 a.m.', daysActive: 12 });
-                            setIsLoading(false);
-                        }, 1000);
-                        return;
-                    }
-
-                    try {
-                        const response = await fetch(GOOGLE_API_URL);
-                        const data = await response.json();
-                        setArdaasData({ time: data.time, daysActive: data.daysActive || 0 });
-                    } catch (error) {
-                        console.error("Failed to fetch routine:", error);
-                    } finally {
+            const performFetch = async () => {
+                // Fallback to demo data if the user hasn't added their Google URL yet
+                if (!GOOGLE_API_URL || GOOGLE_API_URL === "YOUR_GOOGLE_SCRIPT_URL_HERE") {
+                    setTimeout(() => {
+                        setArdaasData({ time: '5.30 a.m.', daysActive: 12 });
                         setIsLoading(false);
-                    }
-                };
-                fetchRealData();
-            }, []);
+                    }, 1000);
+                    return;
+                }
 
-            const handleRefresh = async () => {
-                if (!GOOGLE_API_URL || GOOGLE_API_URL === "YOUR_GOOGLE_SCRIPT_URL_HERE") return;
-                setIsRefreshing(true);
                 try {
-                    const response = await fetch(GOOGLE_API_URL);
-                    const data = await response.json();
-                    setArdaasData({ time: data.time, daysActive: data.daysActive || 0 });
+                    const response = await fetch(GOOGLE_API_URL, { redirect: "follow" });
+                    const textData = await response.text();
+                    
+                    // If Google returns an HTML login page instead of JSON, the deployment permissions are wrong
+                    if (textData.trim().startsWith("<")) {
+                        setErrorMsg("Google Access Denied. You must deploy your Apps Script with 'Who has access: Anyone'");
+                        setArdaasData({ time: 'Error', daysActive: 0 });
+                    } else {
+                        const data = JSON.parse(textData);
+                        setArdaasData({ time: data.time || "--:--", daysActive: data.daysActive || 0 });
+                        setErrorMsg(null);
+                    }
                 } catch (error) {
-                    console.error("Failed to refresh routine:", error);
+                    console.error("Failed to fetch routine:", error);
+                    setErrorMsg("Network Error: Make sure your Google Apps Script Web App URL is correct.");
+                    setArdaasData({ time: 'Error', daysActive: 0 });
                 } finally {
+                    setIsLoading(false);
                     setIsRefreshing(false);
                 }
             };
 
+            useEffect(() => {
+                performFetch();
+            }, []);
+
+            const handleRefresh = () => {
+                setIsRefreshing(true);
+                performFetch();
+            };
+
             const setAndroidAlarm = () => {
-                if (isLoading || ardaasData.time === '--:--') return;
+                if (isLoading || ardaasData.time === '--:--' || ardaasData.time === 'Error') return;
                 
                 const match = ardaasData.time.match(/(\d{1,2})[:.](\d{2})/);
                 if (match) {
@@ -119,7 +124,7 @@
                         {/* Hero Section */}
                         <div className="relative group mt-6">
                             <div className="absolute -inset-1 bg-gradient-to-b from-amber-200 to-amber-400 rounded-[2rem] blur-md opacity-40 group-hover:opacity-60 transition duration-700"></div>
-                            <div className="relative bg-gradient-to-b from-white to-amber-50 border border-amber-200/60 rounded-[2rem] p-8 text-center shadow-xl">
+                            <div className="relative bg-gradient-to-b from-white to-amber-50 border border-amber-200/60 rounded-[2rem] p-8 text-center shadow-xl flex flex-col items-center">
                                 <IconSparkles className="w-8 h-8 text-amber-500 mx-auto mb-3" />
                                 <p className="text-amber-800/80 text-sm font-semibold uppercase tracking-wider mb-2">First Ardas Timing</p>
                                 
@@ -133,7 +138,13 @@
                                     </div>
                                 )}
 
-                                {!isLoading && (
+                                {errorMsg && (
+                                    <div className="mt-4 bg-red-50 border border-red-200 text-red-600 text-xs font-bold p-3 rounded-xl max-w-[250px] leading-relaxed shadow-sm">
+                                        {errorMsg}
+                                    </div>
+                                )}
+
+                                {!isLoading && !errorMsg && (
                                     <div className="mt-6 flex justify-center">
                                         <div className={`px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 border shadow-sm ${ardaasData.daysActive === 0 ? 'bg-amber-100 border-amber-300 text-amber-800' : 'bg-white border-slate-200 text-slate-500'}`}>
                                             {ardaasData.daysActive === 0 ? (
